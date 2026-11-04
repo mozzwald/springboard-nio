@@ -107,7 +107,9 @@ network permissions in the Codex sandbox.
   initially prevented 12 socket tests from opening local servers.
 - NIO Python suite: 79/79 passed in the local pyserial environment; the first
   CTest run used a Python without pyserial and failed imports.
-- Physical app/USB/bus compatibility on this Prism remains untested.
+- Initial build-only status was untested. The subsequent first real-app run
+  passed ISS Tracker and Weather; see [the hardware checkpoint](FIRST_APP_HARDWARE_20261104.md).
+  Physical timing margins and broad lifecycle qualification remain untested.
 
 Candidate and hashes: `build/artifacts/BUILD_ID.json`.
 Working outputs: `firmware/build/sbnio.uf2`, `palm/build/sbnio.rom`.

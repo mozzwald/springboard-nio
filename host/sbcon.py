@@ -10,6 +10,7 @@ overrides it.
 """
 import argparse
 import os
+from pathlib import Path
 import re
 import select
 import subprocess
@@ -23,13 +24,15 @@ def board_serial():
     host/board.serial, else whichever Springboard NIO device comes first."""
     serial = os.environ.get("SBNIO_SERIAL")
     if not serial:
-        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "board.serial")
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "board.local.serial")
+        if not os.path.exists(path):
+            path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "board.serial")
         if os.path.exists(path):
             serial = open(path).read().strip()
     return serial or None
 
 
-def session_id():
+def session_id_macos():
     """USB session of the selected board; it changes every time it enumerates."""
     tree = subprocess.run(["ioreg", "-r", "-n", "Springboard NIO", "-l", "-w0"],
                           capture_output=True, text=True).stdout
@@ -43,7 +46,7 @@ def session_id():
     return None
 
 
-def find_port(name):
+def find_port_macos(name):
     """Map a CDC port's interface name ("NIO link", "Console") on the
     Springboard NIO device to its /dev/cu.* path. The name is on the control
     interface; the serial device hangs off the data interface after it."""
@@ -63,6 +66,51 @@ def find_port(name):
             if m and current == name:
                 return m.group(1)
     return None
+
+
+LINUX_INTERFACES = {"NIO link": "00", "Console": "02"}
+
+
+def linux_ports(sys_tty=Path("/sys/class/tty")):
+    """Discover both CDC interfaces by USB identity, never by ttyACM number."""
+    wanted = board_serial()
+    for tty in sorted(sys_tty.glob("ttyACM*")):
+        device = (tty / "device").resolve()
+        interface = next((p for p in (device, *device.parents)
+                          if (p / "bInterfaceNumber").is_file()), None)
+        usb = next((p for p in (device, *device.parents)
+                    if (p / "idVendor").is_file()), None)
+        if interface is None or usb is None:
+            continue
+        def read(name):
+            try:
+                return (usb / name).read_text().strip()
+            except OSError:
+                return ""
+        serial = read("serial")
+        if (read("idVendor"), read("idProduct"), read("product")) != (
+                "2e8a", "0009", "Springboard NIO"):
+            continue
+        if wanted and serial != wanted:
+            continue
+        number = (interface / "bInterfaceNumber").read_text().strip()
+        yield number, "/dev/" + tty.name, serial + ":" + read("busnum") + ":" + read("devnum")
+
+
+def find_port(name):
+    override = os.environ.get("SBNIO_CONSOLE" if name == "Console" else "SBNIO_LINK")
+    if override:
+        return override
+    if sys.platform == "darwin":
+        return find_port_macos(name)
+    return next((port for number, port, _ in linux_ports()
+                 if number == LINUX_INTERFACES[name]), None)
+
+
+def session_id():
+    if sys.platform == "darwin":
+        return session_id_macos()
+    return next((session for _, _, session in linux_ports()), None)
 
 
 def open_port(path):

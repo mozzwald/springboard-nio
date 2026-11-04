@@ -5,7 +5,8 @@
 set -e
 PALM=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(dirname "$PALM")
-if ! docker image inspect sbnio-palm >/dev/null 2>&1; then
-    docker build --platform linux/amd64 -t sbnio-palm "$PALM/docker"
+IMAGE=${PALM_IMAGE:-sbnio-palm}
+if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
+    docker build --platform linux/amd64 -t "$IMAGE" "$PALM/docker"
 fi
-exec docker run --rm --platform linux/amd64 -v "$ROOT":"$ROOT" -w "$PALM" sbnio-palm make "$@"
+exec docker run --rm --platform linux/amd64 --user "$(id -u):$(id -g)" -v "$(dirname "$ROOT")":"$(dirname "$ROOT")" -w "$PALM" "$IMAGE" make "$@"

@@ -10,3 +10,5 @@ host/nio-run.log
 palm/docker/build.log
 firmware/build-configure.log
 rom/
+host/board.local.serial
+host/nio-run/

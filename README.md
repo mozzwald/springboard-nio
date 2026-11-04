@@ -138,3 +138,12 @@ failures.
 Next: News and Mastodon on the same shim, `host/tools/verify-rom.py` for
 multi-app ROMs (it still expects one database), a RAM-resident install so a module
 reflash cannot crash a running app, and the ESP32-S3 as USB host.
+
+## Linux and macOS host preparation
+
+See [Linux/macOS app-test preparation](docs/LINUX_APP_TEST.md) for branch
+provenance, portable USB discovery, existing Docker-image overrides, a
+build-only firmware command and the first real-app test (ISS Tracker).
+`master` already includes `two-way-cs`; the later PacketLink USB framing is
+retained. Local board selection belongs in ignored `host/board.local.serial`
+or `SBNIO_SERIAL`, so the original Mac board setting need not change.

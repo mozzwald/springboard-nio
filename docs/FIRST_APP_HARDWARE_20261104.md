@@ -92,3 +92,24 @@ compatibility readiness loops must also return control between fetch stages.
 Ordinary CS1 accesses stay short; do not change the PIO responder to solve UI
 scheduling. No application, firmware or protocol code was changed in this
 checkpoint capture.
+
+## Follow-up: taps queued during the first ISS fetch
+
+The user clarified that the first ISS launch was unresponsive, so they tapped
+Refresh and then Home. Once the position arrived, the map appeared and the
+launcher opened immediately. They reopened ISS and waited for its map to load.
+
+This is consistent with input queued while frmOpenEvent's synchronous refresh
+was running, then processed after it returned. The queued Home action explains
+the immediate launcher transition; queued Refresh may also have scheduled
+additional legitimate fetches, but its exact handling was not independently
+traced. This is not evidence of a reset or crash.
+
+Extra legitimate refresh requests can increase ordinary traffic. They do not,
+by themselves, explain the unknown-write counter: that counter increments only
+when a captured high-address register ID is outside the defined DATA/BEGIN/
+CHECK/DOORBELL/CONTROL/LOG/ECHO set. No per-unknown snapshot/timestamp evidence
+was recorded to associate those decodes with the taps or launcher transition.
+Do not attribute the 573 unknown decodes or the long WE-meter maximum to user
+input without further evidence. The initial app success and the UI event-loop
+follow-up remain valid; no firmware change or extra hardware test was made.

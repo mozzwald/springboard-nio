@@ -1,8 +1,11 @@
 # Milestone 3: RAM applications using the installed NioLib
 
-Status: **startup Fatal Exception reported on 2026-11-05; installer R2 built,
-pending controlled hardware retest**. App networking has not been qualified.
-Nothing was flashed, reset, inserted, HotSynced, or restarted during this work.
+Status: **R2 hardware PASS for installation, NioLibTest, ISS and Weather on
+2026-11-05; final ISS-after-Weather re-entry pending**. See
+[M3_HARDWARE_20261105.md](M3_HARDWARE_20261105.md) for the separate user and log
+evidence. The first candidate's Fatal Exception remains recorded below.
+The agent did not flash, reset, insert, HotSync, or restart hardware/services.
+The user subsequently performed the successful physical test recorded above.
 The separate UF2 is a packaging option requested for remote testing; the bus,
 USB and backend implementations are unchanged.
 
@@ -161,7 +164,8 @@ alone does not guarantee discovery of changed ROM databases.
 | Existing static Palm targets | Both fresh `-B palmos-springboard palmos-serial` builds PASS with external `SBNIO_ABI_INCLUDE` |
 | Linux/native API, session, CS1, replay guard, Open, translation, Ready, partial Write and large Read | 9 regression targets PASS |
 | Linked ARM / UF2 differential | PASS as above |
-| Physical automatic install, app fetch, Home/relaunch, Palm heap | **NOT RUN for M3** |
+| Physical automatic install and first app fetch | **R2 PASS, 2026-11-05**; see the hardware checkpoint |
+| Complete ISS→Weather→ISS re-entry and quantitative Palm heap | **Pending** |
 
 Host test commands:
 
@@ -244,7 +248,9 @@ static PRCs for serial HotSync rollback; avoid running static clients while a
 shared-library transaction is unresolved. Nothing here clears M2's fail-closed
 pending-response metadata or claims unknown remote handles are cleaned up.
 
-Milestone 3 is **ready for hardware qualification**, not hardware-qualified.
+The implementation was initially ready for hardware qualification. The later
+R2 checkpoint qualifies installation and first app runs; the complete repeated
+app-handoff/heap qualification remains pending.
 Milestone 4 serial integration, configuration and asynchronous networking have
 not begun.
 
@@ -256,7 +262,8 @@ insertion. The user confirmed `niolib-m3.uf2` was flashed and this was its first
 insertion. The alert has no filename or line number; no exception PC/stack is
 available. Treat this
 as a startup failure report, not proof of a particular ROM bus or networking
-failure. No automatic reset or flash was initiated, and no app test has run.
+failure. No automatic reset or flash was initiated; no app test had run at that failure
+point. The subsequent successful R2 test is recorded in the hardware checkpoint.
 
 Source review identified a concrete call-site problem: the original installer
 locked an `nPRC` resource, skipped the 8-byte length/CRC envelope, then passed
@@ -290,7 +297,8 @@ was not needlessly rerun for this installer-only change.
 Original candidate and identity files remain in
 `build/m3-failure-20261105/`; the original named UF2 also remains in `build/m3/`.
 Use **`build/m3/niolib-m3-r2.uf2`** for an explicitly agreed next attempt. R2
-is not flashed or hardware-qualified. Keep the working rollback UF2 available.
+was initially unflashed; its subsequent successful hardware run is recorded in
+the linked checkpoint. Keep the working rollback UF2 available.
 Do not repeatedly reset the current alert. Confirm recovery/test details with
 the operator before another hardware action.
 

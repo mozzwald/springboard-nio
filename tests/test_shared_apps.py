@@ -43,7 +43,7 @@ class AppMachine(net.NetworkMachine):
 
     def load_app(self, name, identity):
         assert not self.globals and not self.registered and not self.sessions
-        path = ROOT/'palm/build/shared'/name/name
+        path = Path(os.environ.get('PALMOS_APPS_BUILD',ROOT/'palm/build/shared'))/name/name
         blob = path.read_bytes()
         sections = net.foundation.image.coff_sections(blob)
         code = next(s['data'] for s in sections if s['name']=='.text')

@@ -8,8 +8,8 @@
 #include INSTALLER_SOURCE
 typedef struct {UInt8 *data;UInt32 size;} Resource;
 typedef struct {Resource *image;UInt32 type,creator;UInt16 attrs,opens;int exists;} DB;
-static Resource payload[4], resource;
-static DB databases[4];
+static Resource payload[INSTALL_COUNT], resource;
+static DB databases[INSTALL_COUNT];
 static int locks, creates, deletes, loaded, fail_create, fail_alloc, images_live;
 static Resource *allocated_image;
 static UInt16 count(Resource *r){return be16(r->data+76);}
@@ -23,7 +23,7 @@ UInt32 MemHandleSize(MemHandle h){return ((Resource *)h)->size;}
 void *MemHandleLock(MemHandle h){locks++;return ((Resource *)h)->data;}
 void MemHandleUnlock(MemHandle h){(void)h;locks--;}
 void DmReleaseResource(MemHandle h){(void)h;}
-MemHandle DmGet1Resource(UInt32 type,UInt16 id){assert(type=='nPRC');return id>=1000&&id<1004?&payload[id-1000]:0;}
+MemHandle DmGet1Resource(UInt32 type,UInt16 id){assert(type=='nPRC');return id>=1000&&id<1000+INSTALL_COUNT?&payload[id-1000]:0;}
 UInt16 DmNumResources(DmOpenRef p){return count(((DB *)p)->image);}
 UInt16 DmFindResource(DmOpenRef p,UInt32 type,UInt16 id,void *unused){
  Resource *r=((DB *)p)->image;UInt16 i;(void)unused;
@@ -35,7 +35,7 @@ MemHandle DmGetResourceIndex(DmOpenRef p,UInt16 ix){
  UInt32 end=ix+1<count(r)?be32(r->data+94+ix*10):r->size;
  resource.data=r->data+start;resource.size=end-start;return &resource;
 }
-LocalID DmFindDatabase(UInt16 card,Char *name){UInt16 i;assert(card==0);for(i=0;i<4;i++)if(databases[i].exists&&!strcmp((char *)databases[i].image->data,name))return i+1;return 0;}
+LocalID DmFindDatabase(UInt16 card,Char *name){UInt16 i;assert(card==0);for(i=0;i<INSTALL_COUNT;i++)if(databases[i].exists&&!strcmp((char *)databases[i].image->data,name))return i+1;return 0;}
 Err DmDatabaseInfo(UInt16 card,LocalID id,Char *name,UInt16 *attr,UInt16 *v,UInt32 *c,UInt32 *m,UInt32 *b,UInt32 *num,LocalID *a,LocalID *s,UInt32 *t,UInt32 *creator){
  DB *d=&databases[id-1];(void)card;(void)name;(void)v;(void)c;(void)m;(void)b;(void)num;(void)a;(void)s;
  *attr=d->attrs;*t=d->type;*creator=d->creator;return 0;
@@ -53,8 +53,8 @@ Err DmCreateDatabaseFromImage(void *p){
  /* Model the SDK chunk-base contract, not arbitrary interior pointers. */
  assert(allocated_image&&p==allocated_image->data&&locks==2);
  if(fail_create)return 42;
- for(i=0;i<4;i++)if(!strcmp(p,(char *)payload[i].data+8)){
-  static Resource images[4];DB *d=&databases[i];
+ for(i=0;i<INSTALL_COUNT;i++)if(!strcmp(p,(char *)payload[i].data+8)){
+  static Resource images[INSTALL_COUNT];DB *d=&databases[i];
   assert(allocated_image->size==payload[i].size-8);
   assert(!memcmp(p,payload[i].data+8,allocated_image->size));
   free(images[i].data);images[i].data=malloc(allocated_image->size);assert(images[i].data);
@@ -65,25 +65,37 @@ Err DmCreateDatabaseFromImage(void *p){
 Err SysLibFind(Char *name,UInt16 *ref){(void)name;(void)ref;return loaded?0:1;}
 Err DmGetLastErr(void){return 43;}
 int main(int argc,char **argv){
- int i,old;InstallParams params={1,0,0,0,1};assert(argc==5);
- for(i=0;i<4;i++){FILE *f=fopen(argv[i+1],"rb");long n;assert(f);fseek(f,0,SEEK_END);n=ftell(f);rewind(f);payload[i].data=malloc(n);payload[i].size=n;assert(fread(payload[i].data,1,n,f)==(size_t)n);fclose(f);}
- assert(PilotMain(0x8000,&params,0)==0);assert(creates==4&&locks==0&&images_live==0);
+ int i,old;InstallParams params={1,0,0,0,1};assert(argc==INSTALL_COUNT+1);
+ for(i=0;i<INSTALL_COUNT;i++){FILE *f=fopen(argv[i+1],"rb");long n;assert(f);fseek(f,0,SEEK_END);n=ftell(f);rewind(f);payload[i].data=malloc(n);payload[i].size=n;assert(fread(payload[i].data,1,n,f)==(size_t)n);fclose(f);}
+ assert(PilotMain(0x8000,&params,0)==0);assert(creates==INSTALL_COUNT&&locks==0&&images_live==0);
  /* Idempotent resource comparison skips even a loaded, identical library. */
- loaded=1;assert(PilotMain(0x8000,&params,0)==0);assert(creates==4&&deletes==0&&locks==0);
+ loaded=1;assert(PilotMain(0x8000,&params,0)==0);assert(creates==INSTALL_COUNT&&deletes==0&&locks==0);
  /* A different loaded library is never removed. */
  {static Resource different;different=*databases[0].image;different.size--;databases[0].image=&different;
   assert(install_one(0)==BUSY_ERROR);assert(deletes==0&&locks==0);}
- loaded=0;assert(install_one(0)==0);assert(deletes==1&&creates==5&&locks==0);
+ loaded=0;assert(install_one(0)==0);assert(deletes==1&&creates==INSTALL_COUNT+1&&locks==0);
  /* Foreign same-name metadata and open databases cannot be overwritten. */
  databases[2].creator='XXXX';assert(install_one(2)==INSTALL_ERROR);assert(locks==0);databases[2].creator='NBFI';
  /* Corrupted embedded PRC rejected before any DB mutation. */
  old=creates;payload[1].data[100]^=1;assert(install_one(1)==INSTALL_ERROR);assert(creates==old&&locks==0);payload[1].data[100]^=1;
+ /* An open application cannot be replaced, either. */
+ {Resource different=*databases[2].image;Resource *original=databases[2].image;
+  different.size--;databases[2].image=&different;databases[2].opens=2;
+  old=deletes;assert(install_one(2)==BUSY_ERROR&&deletes==old&&locks==0);
+  databases[2].opens=1;databases[2].image=original;}
  /* A create error is returned and retry works; remove leaves RAM apps. */
  databases[3].exists=0;fail_alloc=1;assert(install_one(3)==memErrNotEnoughSpace&&locks==0&&images_live==0);fail_alloc=0;
  fail_create=1;assert(install_one(3)==42&&locks==0);fail_create=0;assert(install_one(3)==0);
+ #ifdef NIOLIB_M5
+ /* Failure at the fifth PRC preserves the first four; retry is idempotent. */
+ databases[4].exists=0;old=creates;fail_create=1;
+ assert(PilotMain(0x8000,&params,0)==42&&creates==old&&locks==0&&images_live==0);
+ for(i=0;i<4;i++)assert(databases[i].exists);
+ fail_create=0;assert(PilotMain(0x8000,&params,0)==0&&creates==old+1);
+#endif
  assert(PilotMain(0x8001,0,0)==0&&databases[3].exists);
  params.setupCardNo=1;assert(PilotMain(0x8000,&params,0)==INSTALL_ERROR);
  assert(images_live==0&&locks==0);
- for(i=0;i<4;i++){free(payload[i].data);free(databases[i].image->data);}
+ for(i=0;i<INSTALL_COUNT;i++){free(payload[i].data);free(databases[i].image->data);}
  puts("installer native policy: PASS (mock OS, not physical installation)");return 0;
 }

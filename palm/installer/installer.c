@@ -1,11 +1,16 @@
 /* Handspring copies HsSU/HsCd to card 0 and invokes Install (0x8000).
- * Install the four complete PRCs into RAM; no retained ROM callbacks/globals.
+ * Install the complete PRCs into RAM; no retained ROM callbacks/globals.
  * Removal leaves the standalone RAM apps installed. No network operations. */
 #include <PalmOS.h>
 #include <stddef.h>
 typedef struct { UInt16 cardNo; UInt8 isReset, reserved; UInt16 setupCardNo; LocalID setupDbID; } InstallParams;
 typedef char params_size[(sizeof(InstallParams)==10)?1:-1];
 typedef char params_offset[(offsetof(InstallParams,setupDbID)==6)?1:-1];
+#ifdef NIOLIB_M5
+#define INSTALL_COUNT 5
+#else
+#define INSTALL_COUNT 4
+#endif
 #define INSTALL_ERROR 0x7c01
 #define BUSY_ERROR 0x7c02
 static UInt32 be32(const UInt8 *p) { return ((UInt32)p[0]<<24)|((UInt32)p[1]<<16)|((UInt32)p[2]<<8)|p[3]; }
@@ -43,7 +48,11 @@ static Err install_one(UInt16 index) {
  if((index==0&&(type!='libr'||creator!='NiL1'))||
     (index==1&&(type!='appl'||creator!='NiT1'))||
     (index==2&&(type!='appl'||creator!='NBFI'))||
-    (index==3&&(type!='appl'||creator!='NBFW')))goto done;
+    (index==3&&(type!='appl'||creator!='NBFW'))
+#ifdef NIOLIB_M5
+    ||(index==4&&(type!='appl'||creator!='NiC1'))
+#endif
+    )goto done;
  id=DmFindDatabase(0,name);
  if(id) {
   UInt32 oldtype=0,oldcreator=0;
@@ -81,6 +90,6 @@ UInt32 PilotMain(UInt16 cmd, MemPtr param, UInt16 flags) {
  if(cmd!=0x8000)return 0;
  {InstallParams *p=(InstallParams *)param;
   if(!p||p->setupCardNo!=0||!p->cardNo)return INSTALL_ERROR;}
- for(i=0;i<4;i++){e=install_one(i);if(e)return (UInt16)e;}
+ for(i=0;i<INSTALL_COUNT;i++){e=install_one(i);if(e)return (UInt16)e;}
  return 0;
 }

@@ -147,3 +147,12 @@ build-only firmware command and the first real-app test (ISS Tracker).
 `master` already includes `two-way-cs`; the later PacketLink USB framing is
 retained. Local board selection belongs in ignored `host/board.local.serial`
 or `SBNIO_SERIAL`, so the original Mac board setting need not change.
+
+## NioLib Milestone 5 configuration package
+
+The separate build-only `tools/build-config-uf2.sh` adds native **NIO Config**
+to the R2 RAM installer, alongside NioLib ABI 1.2, NioLibTest, ISS and Weather.
+The M3 hardware checkpoint and artifacts remain intact. See
+[Milestone 5 integration](docs/M5_CONFIG_INTEGRATION.md) for exact artifact
+identities, automated verification, rollback and remote Prism test steps.
+M5 hardware qualification is pending; no automatic flashing is performed.

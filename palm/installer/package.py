@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and independently verify the four-PRC, RAM-installing Setup ROM."""
+"""Build and independently verify the RAM PRC, RAM-installing Setup ROM."""
 import binascii
 import hashlib
 import json
@@ -20,8 +20,9 @@ def resources(data):
             for i, (typ, ident, start) in enumerate(rows)}
 
 
-def verify(b, lib, test):
+def verify(b, lib, test, config=None):
     prcs = [lib, test, b/'isstracker.prc', b/'weather.prc']
+    if config: prcs.append(config)
     setup = (b/'installer.prc').read_bytes()
     assert setup[60:68] == b'HsSUHsCd'
     src = resources(setup)
@@ -31,7 +32,7 @@ def verify(b, lib, test):
         payload = src[b'nPRC', 1000+i]
         size, crc = struct.unpack_from('>II', payload)
         assert payload[8:] == data and size == len(data) and crc == binascii.crc32(data)
-        assert data[60:68] == [b'librNiL1', b'applNiT1', b'applNBFI', b'applNBFW'][i]
+        assert data[60:68] == [b'librNiL1', b'applNiT1', b'applNBFI', b'applNBFW', b'applNiC1'][i]
         resources(data)
         result['applications'][p.name] = {'size': len(data), 'sha256': hashlib.sha256(data).hexdigest()}
     for name in ['isstracker', 'weather']:
@@ -42,7 +43,7 @@ def verify(b, lib, test):
             assert re.search(r'\b'+expected+r'$', symbols, re.M), (name, expected)
         dis = (b/name/(name+'.dis')).read_text()
         assert 'a80b' in dis.lower() and 'a809' in dis.lower()
-    rom = (b/'niolib-m3.rom').read_bytes()
+    rom = (b/('niolib-m5.rom' if config else 'niolib-m3.rom')).read_bytes()
     u16 = lambda off: struct.unpack_from('>H', rom, off)[0]
     u32 = lambda off: struct.unpack_from('>I', rom, off)[0]
     ptr = lambda off: u32(off)-0x08000000

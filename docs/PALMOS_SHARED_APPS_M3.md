@@ -1,7 +1,7 @@
 # Milestone 3: RAM applications using the installed NioLib
 
-Status: **R2 hardware PASS for installation, NioLibTest, ISS and Weather on
-2026-11-05; final ISS-after-Weather re-entry pending**. See
+Status: **Milestone 3 normal-use hardware qualification PASS, 2026-11-05**:
+R2 installation and NioLibTest → ISS → Weather → rerun ISS all succeeded. See
 [M3_HARDWARE_20261105.md](M3_HARDWARE_20261105.md) for the separate user and log
 evidence. The first candidate's Fatal Exception remains recorded below.
 The agent did not flash, reset, insert, HotSync, or restart hardware/services.
@@ -165,7 +165,8 @@ alone does not guarantee discovery of changed ROM databases.
 | Linux/native API, session, CS1, replay guard, Open, translation, Ready, partial Write and large Read | 9 regression targets PASS |
 | Linked ARM / UF2 differential | PASS as above |
 | Physical automatic install and first app fetch | **R2 PASS, 2026-11-05**; see the hardware checkpoint |
-| Complete ISS→Weather→ISS re-entry and quantitative Palm heap | **Pending** |
+| Complete ISS→Weather→ISS re-entry | **PASS, user confirmed 2026-11-05** |
+| Quantitative Palm heap / extended repeated switching | Not measured; additional coverage |
 
 Host test commands:
 
@@ -249,8 +250,9 @@ shared-library transaction is unresolved. Nothing here clears M2's fail-closed
 pending-response metadata or claims unknown remote handles are cleaned up.
 
 The implementation was initially ready for hardware qualification. The later
-R2 checkpoint qualifies installation and first app runs; the complete repeated
-app-handoff/heap qualification remains pending.
+R2 checkpoint now qualifies installation and the complete minimum app-handoff
+sequence. Quantitative heap and extended stress/fault coverage remain additional
+work rather than measured guarantees.
 Milestone 4 serial integration, configuration and asynchronous networking have
 not begun.
 

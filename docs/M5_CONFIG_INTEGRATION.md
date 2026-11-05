@@ -1,6 +1,7 @@
 # Milestone 5 — NIO Config five-PRC Springboard package
 
-**GO for controlled remote hardware testing; no M5 physical test performed.**
+**Milestone 5 minimum CS1 hardware acceptance PASS**, user-reported
+on the Visor Prism, 2026-11-05. The original preflash checks remain below.
 Built 2026-11-05. No flash, Palm install/reset/reinsertion, service restart or
 physical measurement was performed by the agent. M3 R2 remains the known-good
 hardware fallback. This checkpoint qualifies software and packaging only.
@@ -222,9 +223,40 @@ success snapshot remain untouched.
 
 ## Next steps
 
-Hardware qualification should establish the new installer/UI and CS1 regression
-on the Prism. Serial physical qualification is deferred to a developer with a
+The minimum new UI/CS1 application regression has passed on the Prism, as
+recorded below. Serial physical qualification is deferred to a developer with a
 serial cradle/cable. Future Hosts/Devices screens can use Palm RAM applications
 as device entries; no fake entries or speculative commands exist in M5. USB
 cradle support is M6 and requires its own transport/device-role investigation;
 this UI reserves USB without claiming that the current dock supports it.
+
+## User-reported hardware acceptance — 2026-11-05
+
+After the supplied M5 UF2 was flashed, the user confirmed:
+
+| Action | Actual reported result |
+| --- | --- |
+| Open NIO Config; Springboard → Save → Test | Clock reply: **PASS** |
+| Leave NIO Config; reopen; Test again | Clock reply: **PASS** |
+| Leave NIO Config; launch ISS | Works correctly |
+| Leave ISS; launch Weather | Works correctly |
+
+This qualifies the minimum M5 normal-use CS1 configuration and shared-client
+handoff path. Loading the newly packaged NioConfig demonstrates its availability
+on this device; no independent dump of all five installed databases was taken.
+The user identifies the supplied UF2, SHA256
+`445abdf3dc8ee5543677fffebff1be810e04392cb49a563f59db819150c1eac8`;
+this is not a readback verification of device flash.
+
+No additional host log or photograph accompanied this confirmation. No new
+NioLibTest run, second ISS re-entry, reset-persistence measurement, physical
+serial test or USB test was reported for M5, and none is claimed. The earlier
+M3 NioLibTest → ISS → Weather → ISS hardware checkpoint remains distinct.
+Serial hardware qualification remains deferred and USB remains unsupported;
+neither blocks this milestone's agreed minimum. Extended stress/heap and
+exceptional lifecycle behavior remain additional coverage.
+
+The agent only recorded these results; no hardware action or service restart
+was performed. Original preflash manifests retain `hardware_qualified: false`
+as historical build-time records; this dated user report is the hardware
+qualification update.

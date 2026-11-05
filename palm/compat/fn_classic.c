@@ -5,7 +5,12 @@
  * order. After network_json_parse() each network_json_query() is its own NIO
  * request with JSON translation: NIO fetches the URL and returns just the
  * value at that JSON Pointer. */
+#include <stdbool.h> /* must precede PalmOS.h on prc-tools */
+#ifdef NIO_SHARED_CLIENT
+#include "NioLibClient.h"
+#else
 #include "fujinet-nio.h"
+#endif
 #include "fujinet-network.h"
 #include "fujinet-palmos.h"
 #include <string.h>
@@ -27,6 +32,16 @@ static slot_t slots[SLOTS];
 static uint8_t initialized;
 static uint16_t last_error;
 
+/* Shared clients end their owner on a failed operation as well as app exit.
+ * Keep the old static transport's lifecycle behavior unchanged. */
+static void failed(uint16_t error)
+{
+    last_error = error;
+#ifdef NIO_SHARED_CLIENT
+    fuji_palmos_close();
+#endif
+}
+
 #define WAIT() SysTaskDelay(5)   /* ticks: 50 ms on a Visor */
 
 static const char *url_of(const char *spec)
@@ -43,6 +58,9 @@ static uint8_t ready(void)
     err = fn_init();
     if (err) {
         last_error = err;
+#ifdef NIO_SHARED_CLIENT
+        FrmCustomAlert(9000, "NioLib unavailable", "Install NioLib ABI 1.1; check module/host.", "");
+#endif
         return 0;
     }
     initialized = 1;
@@ -88,20 +106,20 @@ FN_ERR network_open(const char *devicespec, uint8_t mode, uint8_t trans)
     (void)trans;
     if (!ready()) return FN_ERR_OFFLINE;
     if (strlen(url_of(devicespec)) >= URL_MAX) {
-        last_error = FN_ERR_URL_TOO_LONG;
+        failed(FN_ERR_URL_TOO_LONG);
         return FN_ERR_BAD_CMD;
     }
     s = find(devicespec);
     if (s) release(s);
     s = claim(devicespec);
     if (!s) {
-        last_error = FN_ERR_NO_HANDLES;
+        failed(FN_ERR_NO_HANDLES);
         return FN_ERR_IO_ERROR;
     }
     err = fn_open(&s->handle, FN_METHOD_GET, url_of(devicespec), FN_OPEN_FOLLOW_REDIR);
     if (err) {
-        last_error = err;
         s->spec[0] = 0;
+        failed(err);
         return FN_ERR_IO_ERROR;
     }
     s->open = 1;
@@ -111,8 +129,13 @@ FN_ERR network_open(const char *devicespec, uint8_t mode, uint8_t trans)
         WAIT();
     }
     if (status >= 400) {
-        last_error = status;
         release(s);
+        failed(status);
+        return FN_ERR_IO_ERROR;
+    }
+    if (err) {
+        release(s);
+        failed(err);
         return FN_ERR_IO_ERROR;
     }
     return FN_ERR_OK;
@@ -137,7 +160,7 @@ int16_t network_read(const char *devicespec, void *buf, uint16_t len)
             continue;
         }
         if (err) {
-            last_error = err;
+            failed(err);
             return total ? (int16_t)total : -(int16_t)FN_ERR_IO_ERROR;
         }
         tries = 0;
@@ -173,7 +196,7 @@ int16_t network_json_query_n(const char *devicespec, const char *query, char *bu
     err = fn_open_translated(&h, FN_METHOD_GET, url_of(devicespec), FN_OPEN_FOLLOW_REDIR,
                              FN_TRANSLATE_JSON, 0, query);
     if (err) {
-        last_error = err;
+        failed(err);
         return -(int16_t)FN_ERR_IO_ERROR;
     }
     for (;;) {
@@ -199,6 +222,7 @@ int16_t network_json_query_n(const char *devicespec, const char *query, char *bu
         if ((flags & FN_READ_EOF) || !got) break;
     }
     fn_close(h);
+    if (err) failed(err);
     buffer[n] = 0;
     return err ? -(int16_t)FN_ERR_IO_ERROR : (int16_t)n;
 }
@@ -231,6 +255,7 @@ void fuji_palmos_close(void)
         if (slots[i].spec[0]) release(&slots[i]);
     if (initialized) fn_shutdown();
     initialized = 0;
+    memset(slots, 0, sizeof slots);
 }
 
 bool fuji_palmos_is_open(void) { return initialized != 0; }

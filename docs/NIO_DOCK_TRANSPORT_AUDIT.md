@@ -56,7 +56,7 @@ The current `fujinet-palm` checkout already contains the relevant Palm APIs:
   compatibility deserve review when designing the proposed shared driver;
   this audit does not change or install it.
 
-The **currently checked-out** NIO library branch,
+At the initial audit, the checked-out NIO library branch,
 `feat/palmos-springboard` at `361c164`, selects CS1 in
 `src/platform/palmos/fn_transport.c`. It is not currently a runtime-selectable
 CS1/USB/serial driver. Its existence does not make the classic serial apps
@@ -89,3 +89,37 @@ No firmware or Palm app was modified or tested on hardware in this audit.
   for FujiBus and interface 1 for logs across all three selected profiles.
 - No full master rebuild, physical dock serial test, physical dock USB test,
   flash, Palm reset, mode switch or HotSync was performed.
+
+
+## Library master verification after the user switched branches
+
+Verified `fujinet-nio-lib` master at
+`ba872988a4e25e26f50217b54b6362bd18b77bf4`, clean and matching origin/master:
+
+- `a589e40`: Palm OS cradle serial target merged (#7).
+- `ba87298`: Palm OS Springboard CS1 target merged (#6).
+- `make palmos-serial` and `make palmos-springboard` both cross-built with
+  the existing Palm Docker toolchain and the reviewed master bridge ABI header.
+  Outputs are `fujinet-nio-lib/build/fujinet-nio-palmos-{serial,springboard}.a`.
+- `make test-palmos-transport`: PASS; `make test-raw-transport-retry`: PASS.
+- `make test-stream-wake`: compile FAIL at `tests/stream_wake_test.c:42`.
+  The test calls `fn_slip_decode` with three arguments, but the current bounded
+  decoder requires `out_max` as its fourth argument. This is an upstream test
+  source mismatch; no test or library source was changed to bypass it.
+
+Against the previously used library branch `361c164`, all existing files in
+`src/platform/palmos/` are unchanged; `fn_channel_serial.c` is newly added.
+The serial backend selects SrmOpen(serPortCradlePort) when the New Serial
+Manager is present, otherwise SerOpen through `Serial Library`, at 115200 baud
+by default. It uses the common SLIP stream transport and idle-line reclaim.
+It does not offer the Visor-specific `USB Library` / `BuiltIn SerLib` runtime
+selection that the classic Palm transport has. Defaults and Handspring UART
+ownership/flow-control behavior still need hardware-specific review before
+claiming the generic serial target works unchanged on this Prism.
+
+These are separate static build targets exposing the same high-level NIO API,
+not a shared Palm system library with runtime mode selection. The CS1 exchange
+is still blocking; the asynchronous UI work remains necessary. The checked-out
+library master, app sources and running firmware/backend were not modified.
+This follow-up supersedes the earlier checked-out-branch observation; the NIO
+USB host/device role distinction above is unchanged.

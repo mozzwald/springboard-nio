@@ -1,6 +1,7 @@
 # Milestone 3: RAM applications using the installed NioLib
 
-Status: **built and host-tested; pending Visor Prism hardware qualification**.
+Status: **startup Fatal Exception reported on 2026-11-05; installer R2 built,
+pending controlled hardware retest**. App networking has not been qualified.
 Nothing was flashed, reset, inserted, HotSynced, or restarted during this work.
 The separate UF2 is a packaging option requested for remote testing; the bus,
 USB and backend implementations are unchanged.
@@ -78,7 +79,7 @@ matching picotool package. No production source was changed for these issues.
 
 Artifacts:
 
-- `build/m3/niolib-m3.uf2` — single experimental firmware package.
+- `build/m3/niolib-m3-r2.uf2` — single experimental firmware package.
 - `build/m3/install/{NioLib,NioLibTest,isstracker,weather}.prc` — standalone
   HotSync-installable alternatives; exactly the same files embedded in the ROM.
 - `palm/build/shared/{installer.prc,niolib-m3.rom,verification.json}`.
@@ -130,7 +131,7 @@ free RAM for the ~51 KiB copied Setup plus installed PRCs and temporary OS work.
 The exact peak Palm heap/storage cost is not established by native mocks.
 
 `package.py` independently validates every embedded PRC resource, identities,
-ROM directory/chunks, full ROM CRC16 and HsAT 330 token. The ROM is **51,478
+ROM directory/chunks, full ROM CRC16 and HsAT 330 token. The R2 ROM is **51,558
 bytes**, below 65,536. Nothing changes the clock, wait states or electrical
 settings. `verify-shared-uf2.py` verifies UF2 framing, the unchanged RP2350
 compatibility marker, program blocks against the generated BIN, exact ROM in
@@ -190,7 +191,7 @@ and `test-stream-wake` signature failures remain unrelated, unresolved limits.
 Choose **one** installation path:
 
 **Single UF2, no HotSync:** close network apps, return Home, remove the module,
-enter RP2350 BOOTSEL, copy `build/m3/niolib-m3.uf2`, then let it enumerate. Start
+enter RP2350 BOOTSEL, copy `build/m3/niolib-m3-r2.uf2`, then let it enumerate. Start
 NIO using the command below, then insert the module once. The ROM Setup should
 install NioLib (a hidden system library), NioLibTest, ISS Tracker and Weather
 into RAM. Do not run the old static ROM apps as a substitute. This candidate ROM
@@ -246,3 +247,57 @@ pending-response metadata or claims unknown remote handles are cleaned up.
 Milestone 3 is **ready for hardware qualification**, not hardware-qualified.
 Milestone 4 serial integration, configuration and asynchronous networking have
 not begun.
+
+
+## Startup failure and installer R2 — 2026-11-05
+
+User reports a Fatal Exception with only Reset during module detection on
+insertion. The user confirmed `niolib-m3.uf2` was flashed and this was its first
+insertion. The alert has no filename or line number; no exception PC/stack is
+available. Treat this
+as a startup failure report, not proof of a particular ROM bus or networking
+failure. No automatic reset or flash was initiated, and no app test has run.
+
+Source review identified a concrete call-site problem: the original installer
+locked an `nPRC` resource, skipped the 8-byte length/CRC envelope, then passed
+that interior pointer to `DmCreateDatabaseFromImage`. The SDK API describes its
+input as a pointer to a locked resource containing the database image
+([Palm API reference](https://palm.wiki/development/docs/601/PalmOSReference/DataAndResourceManager.html)).
+The old native mock accepted arbitrary interior pointers and did not model
+allocation boundaries. There is no real Palm exception trace proving this was
+the crashing operation; that causal link remains a hypothesis.
+
+R2 copies the complete validated PRC into a new `MemHandleNew(n)` allocation,
+locks it and calls the OS with that allocation's base pointer. It unlocks and
+frees the temporary image on success or create failure; allocation/lock failure
+returns an error. The source resource remains locked during validation/use.
+This removes the interior-pointer dependency and provides the exact image
+length as the chunk size. Peak extra temporary allocation is one PRC at a time
+(maximum 16,032 bytes), plus handle/OS overhead. It does not alter any app,
+library, protocol, PIO, ARM reply or USB source.
+
+The native mock now requires the API argument to equal the base of the new
+locked image allocation, copies database contents independently (no retained
+pointer to a freed image), and checks allocation failure and final zero live
+image/lock counts. The original committed installer **fails** that tightened
+check; R2 passes. This reproduces a violated modeled precondition, not the
+Prism's actual exception. The compiled installer and complete ROM packaging
+were rebuilt and audited. All five app/installer host methods pass. The linked
+critical ARM/PIO byte comparisons and UF2/BIN validation still pass. The
+unchanged library/network code's prior 26-test result remains applicable; it
+was not needlessly rerun for this installer-only change.
+
+Original candidate and identity files remain in
+`build/m3-failure-20261105/`; the original named UF2 also remains in `build/m3/`.
+Use **`build/m3/niolib-m3-r2.uf2`** for an explicitly agreed next attempt. R2
+is not flashed or hardware-qualified. Keep the working rollback UF2 available.
+Do not repeatedly reset the current alert. Confirm recovery/test details with
+the operator before another hardware action.
+
+
+R2 UF2 SHA256: `9058447b8c623d38c63b2a3d3fdbedaa367233754e6f6114012dd0ee72387361`.
+R2 ROM SHA256: `953b9ebb97fb9fcf7f953889983c5a24c0cc071f80e2cb7ad5ce968571f6d3bc`.
+The four application/library PRCs are unchanged. For recovery after recording
+the alert, remove the module and soft-reset the Prism once, keeping the module
+out before any explicitly agreed R2 flash/reinsert. No hard reset or data erase
+is requested. If an exception repeats, stop rather than cycling resets.

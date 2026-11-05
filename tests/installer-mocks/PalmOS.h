@@ -12,6 +12,9 @@ typedef void *MemPtr, *MemHandle, *DmOpenRef;
 #define dmHdrAttrResDB 1
 #define dmHdrAttrBackup 8
 #define dmModeReadOnly 2
+#define memErrNotEnoughSpace 0x0202
+MemHandle MemHandleNew(UInt32);
+Err MemHandleFree(MemHandle);
 UInt32 MemHandleSize(MemHandle);
 void *MemHandleLock(MemHandle);
 void MemHandleUnlock(MemHandle);

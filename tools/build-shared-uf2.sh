@@ -12,9 +12,9 @@ cmake -S "$ROOT/firmware" -B "$ROOT/build/m3/firmware" -G Ninja \
  "-DSBNIO_ROM=$ROOT/palm/build/shared/niolib-m3.rom"
 cmake --build "$ROOT/build/m3/firmware"
 python3 "$ROOT/tools/verify-shared-uf2.py" --baseline "${BASELINE_ELF:-$WORKSPACE/springboard-nio/build/artifacts/sbnio-linux-apps.elf}"
-cp "$ROOT/build/m3/firmware/sbnio.uf2" "$ROOT/build/m3/niolib-m3.uf2"
+cp "$ROOT/build/m3/firmware/sbnio.uf2" "$ROOT/build/m3/niolib-m3-r2.uf2"
 mkdir -p "$ROOT/build/m3/install"
 cp "$ROOT/palm/build/shared/isstracker.prc" "$ROOT/palm/build/shared/weather.prc" "$ROOT/build/m3/install/"
 LIB=${NIOLIB_ROOT:-$(cd "$ROOT/repos/fujinet-nio-lib" && pwd -P)}
 cp "$LIB/build/palmos-shared-m3/NioLib.prc" "$LIB/build/palmos-shared-m3/NioLibTest.prc" "$ROOT/build/m3/install/"
-printf '%s\n' "Built $ROOT/build/m3/niolib-m3.uf2 (not flashed)."
+printf '%s\n' "Built $ROOT/build/m3/niolib-m3-r2.uf2 (not flashed)."

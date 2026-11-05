@@ -56,7 +56,18 @@ static Err install_one(UInt16 index) {
   if(opens>1||(type=='libr'&&SysLibFind(name,&ref)==0)){err=BUSY_ERROR;goto done;}
   err=DmDeleteDatabase(0,id);if(err)goto done;
  }
- err=DmCreateDatabaseFromImage(p);if(err)goto done;
+ /* The database image must be the complete locked chunk, not p==h+8.
+  * Palm may inspect its allocation/handle; a desktop PRC payload pointer
+  * inside our length/CRC envelope is not an allocated chunk base. */
+ {MemHandle image=MemHandleNew(n);MemPtr imageP;
+  if(!image){err=memErrNotEnoughSpace;goto done;}
+  imageP=MemHandleLock(image);
+  if(!imageP){MemHandleFree(image);err=memErrNotEnoughSpace;goto done;}
+  MemMove(imageP,p,n);
+  err=DmCreateDatabaseFromImage(imageP);
+  MemHandleUnlock(image);MemHandleFree(image);
+  if(err)goto done;
+ }
  id=DmFindDatabase(0,name);if(!id){err=INSTALL_ERROR;goto done;}
  db=DmOpenDatabase(0,id,dmModeReadOnly);if(!db){err=DmGetLastErr();goto done;}
  if(!same_resources(db,p,n))err=INSTALL_ERROR;

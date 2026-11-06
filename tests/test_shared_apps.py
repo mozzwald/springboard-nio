@@ -14,7 +14,8 @@ LIB = Path(os.environ.get('NIOLIB_ROOT', ROOT/'repos/fujinet-nio-lib')).resolve(
 os.environ.setdefault('PALMOS_SHARED_BUILD', str(LIB/'build/palmos-shared-m3'))
 sys.path.insert(0, str(LIB/'tests'))
 import test_palmos_shared_network as net
-from unicorn.m68k_const import UC_M68K_REG_A7, UC_M68K_REG_D0, UC_M68K_REG_PC
+from test_palmos_shared_json import CachedJSONPeer
+from unicorn.m68k_const import UC_M68K_REG_A0, UC_M68K_REG_A7, UC_M68K_REG_D0, UC_M68K_REG_PC
 
 class AppMachine(net.NetworkMachine):
     def __init__(self):
@@ -25,6 +26,10 @@ class AppMachine(net.NetworkMachine):
     def hook(self, uc, pc, size, context):
         if bytes(uc.mem_read(pc, 2)) == b'\x4e\x4f':
             trap, sp = self.read16(pc+2), uc.reg_read(UC_M68K_REG_A7)
+            if trap == 0xa0a0:  # bounded NotReady polling delay
+                self.now += self.read32(sp)
+                uc.reg_write(UC_M68K_REG_D0,0); uc.reg_write(UC_M68K_REG_PC,pc+4)
+                return
             if trap == 0xa2ac and self.missing_library:
                 uc.reg_write(UC_M68K_REG_D0, 1)
                 uc.reg_write(UC_M68K_REG_PC, pc+4)
@@ -89,6 +94,10 @@ class SharedAppsTests(unittest.TestCase):
             self.assertEqual(m.client('network_json_parse',struct.pack('>I',0x9100)),0)
             self.assertGreater(m.query(),0)
             self.assertTrue(bytes(m.uc.mem_read(0x9400,5)).startswith(b'body-'))
+            # The document handle now lives until the caller's JSON Close.
+            self.assertEqual(len(m.sessions),1)
+            m.client('network_close',struct.pack('>I',0x9100))
+            self.assertFalse(m.sessions)
             # Two app-owned handles; shutdown closes both without explicit close.
             for suffix in [b'a',b'b']:
                 m.uc.mem_write(0x9200,b'N:http://example.com/'+suffix+b'\0')
@@ -144,5 +153,131 @@ class SharedAppsTests(unittest.TestCase):
             self.assertFalse(m.sessions)
             self.assertFalse(m.globals)
             self.assertFalse(m.registered)
+
+class CachedAppMachine(CachedJSONPeer, AppMachine):
+    def string(self,address):
+        data=bytearray()
+        while self.uc.mem_read(address+len(data),1)[0]: data+=self.uc.mem_read(address+len(data),1)
+        return data.decode()
+
+    def hook(self,uc,pc,size,ctx):
+        # SDK ROM string helpers needed by the actual Weather fetch routines;
+        # all networking, packet construction and field access stay real code.
+        if bytes(uc.mem_read(pc,2))==b'\x4e\x4f':
+            trap,sp=self.read16(pc+2),uc.reg_read(UC_M68K_REG_A7)
+            if trap in (0xa0c8,0xa2d6,0xa2de):
+                target,source=self.read32(sp),self.read32(sp+4)
+                if trap==0xa0c8:
+                    a,b=self.string(target),self.string(source)
+                    result=0 if a==b else 1 if a>b else 0xffff
+                else:
+                    if trap==0xa2d6:
+                        text=(self.string(target)+self.string(source))[:max(0,self.read16(sp+8)-1)]
+                        result=target;uc.reg_write(UC_M68K_REG_A0,target)
+                    else:
+                        # Only the app's single-Int16 daily-index formats.
+                        argument=self.read16(sp+8)
+                        if argument>=0x8000:argument-=0x10000
+                        text=self.string(source)%argument;result=len(text)
+                    uc.mem_write(target,text.encode()+b'\0')
+                uc.reg_write(UC_M68K_REG_D0,result);uc.reg_write(UC_M68K_REG_PC,pc+4);return
+        super().hook(uc,pc,size,ctx)
+
+
+class CachedJSONAppTests(unittest.TestCase):
+    def document(self,m,url,paths):
+        m.uc.mem_write(0x9100,url.encode()+b'\0')
+        spec=struct.pack('>I',0x9100)
+        self.assertEqual(m.client('network_open',struct.pack('>IBxBx',0x9100,4,0)),0)
+        self.assertEqual(m.client('network_json_parse',spec),0)
+        original_handles=set(m.sessions)
+        self.assertEqual(len(original_handles),1)
+        answers=[]
+        for path in paths:
+            m.uc.mem_write(0x9300,path.encode()+b'\0')
+            result=m.call('network_json_query_n',struct.pack('>IIIH',0x9100,0x9300,0x9400,32),app=True,a5=m.app_a5)
+            self.assertLess(result,0x8000)
+            answers.append(bytes(m.uc.mem_read(0x9400,result)).decode())
+            self.assertEqual(set(m.sessions),original_handles)
+        m.client('network_close',spec)
+        self.assertFalse(m.sessions);self.assertFalse(m.documents)
+        return answers
+
+    def test_iss_three_fields_share_one_http_get_and_snapshot(self):
+        m=CachedAppMachine();m.load_app('isstracker',101)
+        values=self.document(m,'N:http://example.com/iss',
+            ['/timestamp','/iss_position/latitude','/iss_position/longitude','/fetch'])
+        self.assertEqual(values,['1234567890','12.34','56.78','1'])
+        self.assertEqual(m.http_opens,1)
+        self.assertEqual(sum(p[:2]==b'\xfd\x01' for p in m.requests),1)
+        m.client('fuji_palmos_close');self.assertFalse(m.globals)
+
+    def test_actual_iss_fetch_uses_one_get(self):
+        m=CachedAppMachine();m.load_app('isstracker',101)
+        self.assertEqual(m.call('FetchIss',struct.pack('>I',0x8800),app=True,a5=m.app_a5),1)
+        self.assertEqual(m.http_opens,1)
+        self.assertEqual(m.read32(m.app_data+m.app_symbols['gTimestamp']),1234567890)
+        self.assertEqual([p[13:] for p in m.requests if p[:2]==b'\xfd\x07'],
+                         [b'/timestamp',b'/iss_position/latitude',b'/iss_position/longitude'])
+        self.assertFalse(m.sessions);self.assertFalse(m.documents)
+        m.client('fuji_palmos_close');self.assertFalse(m.globals)
+
+    def test_weather_startup_field_sequence_uses_four_documents(self):
+        m=CachedAppMachine();m.load_app('weather',202)
+        location=['/status','/city','/regionName','/countryCode','/lat','/lon']
+        current=['/current/'+key for key in ('temperature_2m','apparent_temperature','wind_speed_10m','wind_direction_10m')]
+        extras=['/current/relative_humidity_2m','/current/surface_pressure','/current/weather_code',
+                '/utc_offset_seconds','/daily/sunrise/0','/daily/sunset/0']
+        forecast=['/daily/temperature_2m_max/0','/daily/temperature_2m_min/0']
+        forecast += ['/daily/%s/%d'%(key,i) for i in range(1,6)
+                     for key in ('time','temperature_2m_max','temperature_2m_min','weather_code')]
+        for n,paths in enumerate((location,current,extras,forecast)):
+            values=self.document(m,'N:http://example.com/weather%d'%n,paths)
+            self.assertTrue(all(values))
+        self.assertEqual(m.http_opens,4)
+        self.assertEqual(sum(p[:2]==b'\xfd\x07' for p in m.requests),38)
+        self.assertEqual(sum(p[:2]==b'\xfd\x04' for p in m.requests),4)
+        m.client('fuji_palmos_close')
+        self.assertFalse(m.globals);self.assertFalse(m.registered)
+        self.assertEqual(len(m.allocations),len(m.frees))
+
+    def test_actual_weather_fetch_uses_four_gets(self):
+        m=CachedAppMachine();m.load_app('weather',202)
+        self.assertEqual(m.call('GetIpLocation',b'',app=True,a5=m.app_a5,budget=6000000),1)
+        self.assertEqual(m.call('GetWeather',b'',app=True,a5=m.app_a5,budget=6000000),1)
+        self.assertEqual(m.http_opens,4)
+        self.assertEqual(sum(p[:2]==b'\xfd\x07' for p in m.requests),38)
+        self.assertEqual(sum(p[:2]==b'\xfd\x04' for p in m.requests),4)
+        self.assertFalse(m.sessions);self.assertFalse(m.documents)
+        m.client('fuji_palmos_close');self.assertFalse(m.globals)
+
+    def test_older_library_reports_dependency_without_refetch_fallback(self):
+        class OlderApps(CachedAppMachine):
+            def hook(self,uc,pc,size,ctx):
+                if bytes(uc.mem_read(pc,2))==b'\x4e\x4f':
+                    trap,sp=self.read16(pc+2),uc.reg_read(UC_M68K_REG_A7)
+                    if trap==0xa816:raise AssertionError('new trap called on old library')
+                    if trap==0xa805:
+                        uc.mem_write(self.read32(sp+2),struct.pack('>4H',8,1,3,6))
+                        uc.reg_write(UC_M68K_REG_D0,0);uc.reg_write(UC_M68K_REG_PC,pc+4);return
+                super().hook(uc,pc,size,ctx)
+        for name in ('isstracker','weather'):
+            m=OlderApps();m.load_app(name,101)
+            self.assertEqual(m.open_url(),0)
+            self.assertEqual(m.client('network_json_parse',struct.pack('>I',0x9100)),0)
+            self.assertGreaterEqual(m.query(),0x8000)
+            self.assertEqual(m.alerts,[9000]);self.assertEqual(m.http_opens,1)
+            self.assertFalse(m.globals);self.assertFalse(m.sessions)
+
+    def test_first_pending_body_polls_read_without_reconfiguring(self):
+        for name in ('isstracker','weather'):
+            m=CachedAppMachine();m.load_app(name,101)
+            m.json_pending_config=1;m.json_pending_reads=2
+            values=self.document(m,'N:http://example.com/json',['/value','/other'])
+            self.assertEqual(values,['first','second'])
+            self.assertEqual(m.http_opens,1)
+            self.assertEqual(sum(p[:2]==b'\xfd\x07' for p in m.requests),2)
+            self.assertEqual(m.json_pending_reads,0)
+            m.client('fuji_palmos_close');self.assertFalse(m.globals)
 
 if __name__=='__main__':unittest.main()

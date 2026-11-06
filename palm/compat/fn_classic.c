@@ -2,9 +2,9 @@
  * so fujinet-palm apps run over the Springboard unchanged.
  *
  * network_open() opens an NIO HTTP session; network_read() reads it in
- * order. After network_json_parse() each network_json_query() is its own NIO
- * request with JSON translation: NIO fetches the URL and returns just the
- * value at that JSON Pointer. */
+ * order. Shared-library JSON queries retain that handle and use NIO's
+ * TranslateConfigure to select fields from its cached response, without GETs.
+ * The legacy static build remains unchanged. */
 #include <stdbool.h> /* must precede PalmOS.h on prc-tools */
 #ifdef NIO_SHARED_CLIENT
 #include "NioLibClient.h"
@@ -176,8 +176,12 @@ FN_ERR network_json_parse(const char *devicespec)
 {
     slot_t *s = find(devicespec);
     if (!s) return FN_ERR_BAD_CMD;
+#ifndef NIO_SHARED_CLIENT
     if (s->open) fn_close(s->handle);
     s->open = 0;
+#else
+    if (!s->open) return FN_ERR_BAD_CMD;
+#endif
     s->json = 1;
     return FN_ERR_OK;
 }
@@ -193,9 +197,21 @@ int16_t network_json_query_n(const char *devicespec, const char *query, char *bu
     if (!buflen) return 0;
     buffer[0] = 0;
     if (!s || !s->json) return -(int16_t)FN_ERR_BAD_CMD;
+#ifdef NIO_SHARED_CLIENT
+    if (!s->open) return -(int16_t)FN_ERR_BAD_CMD;
+    h = s->handle;
+    err = fn_json_query(h, query);
+    /* NotReady may follow successful selector application while the first
+     * body is still downloading. Poll Read, never repeat configuration and
+     * discard a partially cached body. Later fields reuse this same handle. */
+    if (err == FN_ERR_UNSUPPORTED)
+        FrmCustomAlert(9000, "JSON support unavailable", "Install NioLib ABI 1.4 for these apps.", "");
+    if (err && err != FN_ERR_NOT_READY) {
+#else
     err = fn_open_translated(&h, FN_METHOD_GET, url_of(devicespec), FN_OPEN_FOLLOW_REDIR,
                              FN_TRANSLATE_JSON, 0, query);
     if (err) {
+#endif
         failed(err);
         return -(int16_t)FN_ERR_IO_ERROR;
     }
@@ -221,7 +237,9 @@ int16_t network_json_query_n(const char *devicespec, const char *query, char *bu
         }
         if ((flags & FN_READ_EOF) || !got) break;
     }
+#ifndef NIO_SHARED_CLIENT
     fn_close(h);
+#endif
     if (err) failed(err);
     buffer[n] = 0;
     return err ? -(int16_t)FN_ERR_IO_ERROR : (int16_t)n;

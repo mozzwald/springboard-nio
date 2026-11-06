@@ -86,3 +86,23 @@ Launch ISS, then Weather and confirm correct fields/fresh data; compare backend
 GET/Open counts with one/four. Existing synchronous UI waiting remains expected.
 No installation, backend restart, USB claim or physical testing was performed
 while preparing these candidates.
+
+
+## Hardware checkpoint — 2026-11-06
+
+The user tested the updated NioLib, ISS Tracker and Weather with these JSON fixes
+on the Visor Prism and reports that all work perfectly. This follows the separate
+successful pre-upstream USB and CS1 acceptance session.
+
+The app implementation is committed as
+`5bf75ebef471c17f53ac1c029f708a5c9ce7f7ce` on `feat/palmos-shared-apps`.
+Its matching NioLib ABI 1.4 support is
+`421fa27d2a34b9b98766bf29f6b57fb8c80a8c45` on
+`fujinet-nio-lib:feat/palmos-shared-niolib`. No host, firmware or ROM update is
+required for this change.
+
+This is user-reported physical application success. No additional host trace,
+GET-count measurement or elapsed-time measurement was collected, and the transport
+for this particular app test was not specified. The automated evidence above
+remains the source for exact one/four GET assertions. The earlier preparation-only
+and pending-test statements are retained as historical context.
